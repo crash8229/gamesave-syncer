@@ -89,8 +89,8 @@ class App:
         tk.Button(sshWindow, text="...", command=self.callback).grid(row=3, column=2)
 
         # Making the Ok and Cancel buttons
-        tk.Button(sshWindow, text="Ok", command=self.callback)
-        tk.Button(sshWindow, text="Cancel", command=self.callback)
+        tk.Button(sshWindow, text="Ok", command=self.callback).grid(row=4, column=2)
+        tk.Button(sshWindow, text="Cancel", command=self.callback).grid(row=4, column=3)
 
     def close(self):
         self.root.destroy()
