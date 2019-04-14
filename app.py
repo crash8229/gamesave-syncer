@@ -1,4 +1,3 @@
-# from paramiko import SSHClient
 import paramiko
 import tkinter as tk
 from functools import partial
@@ -92,6 +91,24 @@ class SSHWindow(tk.Toplevel):
         print("Get File")
 
 
+class Dropdown(tk.OptionMenu):
+
+    def __init__(self, master):
+        self.master = master
+        self.var = tk.StringVar()
+        self.var.set("")
+        self.options = [""]
+        tk.OptionMenu.__init__(self, master, self.var, *self.options)
+
+    def update_option_menu(self):
+        menu = self["menu"]
+        menu.delete(0, "end")
+        for string in self.options:
+            menu.add_command(label=string, command=lambda value=string: self.var.set(value))
+        self.var.set(self.options[0])
+
+
+
 class App:
     def __init__(self):
         self.root = tk.Tk()
@@ -105,7 +122,6 @@ class App:
             config.close()
         except IOError:
             self.clientInfo.clear()
-
 
         # create a menu
         menu = tk.Menu(self.root)
@@ -129,8 +145,13 @@ class App:
         main_frame = tk.Frame(self.root)
         main_frame.pack()
 
+        # create dropdown menu
+        tk.Label(main_frame, text="Game:").grid(row=1, column=0, sticky="e")
+        self.gameDropdown = Dropdown(main_frame)
+        self.gameDropdown.grid(row=1, column=1, sticky="w")
+
         self.text = tk.Text(main_frame)
-        self.text.pack()
+        self.text.grid(row=2, column=0, columnspan=2)
 
         self.client = None
 
@@ -139,7 +160,7 @@ class App:
 
     def update(self):
         startTime = time()
-
+        print(self.gameDropdown.var.get())
         print(self.clientInfo)
         if "status" in self.clientInfo and self.clientInfo["status"] == "Log In":
             client_info = dict(self.clientInfo)
@@ -167,7 +188,7 @@ class App:
         tries = 2
         while tries > 0:
             try:
-                out = self.client.connect(**info)
+                self.client.connect(**info)
                 tries = 0
             except paramiko.BadHostKeyException:
                 self.clientInfo["status"] = "Error: Bad Host Key"
