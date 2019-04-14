@@ -1,6 +1,6 @@
-# from paramiko import SSHClient
 import paramiko
 import tkinter as tk
+from tkinter import ttk
 from functools import partial
 from threading import Thread
 from time import time
@@ -11,7 +11,6 @@ from socket import error as socketError
 
 # TODO: use timestamp to determine if to upload
 class StatusBar(tk.Frame):
-
     def __init__(self, master):
         tk.Frame.__init__(self, master)
         self.label = tk.Label(self, bd=1, relief=tk.SUNKEN, anchor=tk.W)
@@ -92,11 +91,26 @@ class SSHWindow(tk.Toplevel):
         print("Get File")
 
 
+class Dropdown(ttk.Combobox):
+    def __init__(self, master):
+        self.master = master
+        self.options = [""]
+        ttk.Combobox.__init__(self, master, values=self.options)
+        self.update_option_menu()
+
+    def update_option_menu(self):
+        self["values"] = self.options
+        self.current(0)
+
+
 class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Game Save Syncer")
         self.root.option_add('*tearOff', tk.FALSE)
+        self.root.geometry("640x360")
+        self.root.minsize(640, 360)
+        self.root.resizable(1, 1)
 
         self.clientInfo = dict()
         try:
@@ -106,10 +120,11 @@ class App:
         except IOError:
             self.clientInfo.clear()
 
-
         # create a menu
         menu = tk.Menu(self.root)
         self.root.config(menu=menu)
+        self.root.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
 
         fileMenu = tk.Menu(menu)
         menu.add_cascade(label="File", menu=fileMenu)
@@ -123,14 +138,43 @@ class App:
         menu.add_cascade(label="Help", menu=helpMenu)
         helpMenu.add_command(label="About", command=self.callback)
 
+        mainFrame = tk.Frame(self.root)
+        mainFrame.grid(row=0, column=0, sticky="nesw")
+        mainFrame.rowconfigure(0, weight=0)
+        mainFrame.rowconfigure(1, weight=0)
+        mainFrame.rowconfigure(2, weight=2)
+        # mainFrame.rowconfigure(3, weight=1)
+        mainFrame.columnconfigure(0, weight=1)
+
+        labelFrame = tk.LabelFrame(mainFrame, text="Connection Information")
+        labelFrame.grid(row=0, column=0, sticky="nswe")
+        labelFrame.columnconfigure(0, weight=1)
+        self.connectionInfo = tk.Label(labelFrame, text="Not Connected")
+        self.connectionInfo.grid(row=0, column=0, sticky="nswe")
+
+        # create dropdown menu
+        gameDropdownLabel= tk.LabelFrame(mainFrame, text="Game:")
+        gameDropdownLabel.grid(row=1, column=0, sticky="nsew")
+        gameDropdownLabel.columnconfigure(0, weight=1)
+        self.gameDropdown = Dropdown(gameDropdownLabel)
+        self.gameDropdown.grid(row=0, column=0, sticky="nsew")
+
+        # create treeview
+        self.saveList = ttk.Treeview(mainFrame)
+        self.saveList["columns"] = ("1", "2")
+        self.saveList.column("#0", width=270, minwidth=270)
+        self.saveList.column("1", width=150, minwidth=150)
+        self.saveList.column("2", width=80, minwidth=50)
+        self.saveList.heading("#0", text="Name", anchor="w")
+        self.saveList.heading("1", text="Date Modified", anchor="w")
+        self.saveList.heading("2", text="Size", anchor="w")
+        self.saveList.grid(row=2, column=0, columnspan=2, sticky="nwes")
+
+        # self.text = tk.Text(mainFrame)
+        # self.text.grid(row=3, column=0, columnspan=2, sticky="we")
+
         self.status = StatusBar(self.root)
-        self.status.pack(side=tk.BOTTOM, fill=tk.X)
-
-        main_frame = tk.Frame(self.root)
-        main_frame.pack()
-
-        self.text = tk.Text(main_frame)
-        self.text.pack()
+        self.status.grid(row=1, column=0, sticky="we")
 
         self.client = None
 
@@ -139,7 +183,6 @@ class App:
 
     def update(self):
         startTime = time()
-
         print(self.clientInfo)
         if "status" in self.clientInfo and self.clientInfo["status"] == "Log In":
             client_info = dict(self.clientInfo)
@@ -167,7 +210,7 @@ class App:
         tries = 2
         while tries > 0:
             try:
-                out = self.client.connect(**info)
+                self.client.connect(**info)
                 tries = 0
             except paramiko.BadHostKeyException:
                 self.clientInfo["status"] = "Error: Bad Host Key"
@@ -201,8 +244,9 @@ class App:
         self.status.set(self.clientInfo["status"])
         stdin, stdout, stderr = self.client.exec_command('ls -l')
         out = stdout.read().decode("UTF-8")
-        self.text.delete(1.0, tk.END)
-        self.text.insert(1.0, out)
+        print(out)
+        # self.text.delete(1.0, tk.END)
+        # self.text.insert(1.0, out)
 
         self.client.close()
         self.clientInfo["status"] = "Disconnected"
