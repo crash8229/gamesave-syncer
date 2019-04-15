@@ -116,6 +116,7 @@ class App:
         try:
             config = open("config", "r")
             self.clientInfo = json.load(config)
+            self.clientInfo["status"] = "Idle"
             config.close()
         except IOError:
             self.clientInfo.clear()
