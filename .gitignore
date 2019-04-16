@@ -106,3 +106,5 @@ venv.bak/
 private.ppk
 private
 config
+connection.json
+games.json

@@ -9,6 +9,43 @@ import json
 import lzma
 from socket import error as socketError
 
+# Current save.json structure proposal:
+# {
+#   friendlyName1: {
+#       gameExe: "name.exe"
+#       saveFolder: "path to save folder"
+#       save: {
+#           nameOfSave1: unixTimestamp
+#           nameOfSave2: unixTimestamp
+#       }
+#   }
+#   friendlyName2: {
+#       gameExe: "name.exe"
+#       saveFolder: "path to save folder"
+#       save: {
+#           nameOfSave1: unixTimestamp
+#           nameOfSave2: unixTimestamp
+#       }
+#   }
+# }
+#
+# Current games.json structure proposal:
+# I chose this structure since the location of the game exe will vary system
+# to system. This will be stored on the client side. From save.conf, it will
+# check to see if the game.exe has an entry to when it is on the system. If not,
+# present the text color could be changed to red to indicate that the
+# game.exe needs to be located. Same with save location.
+# {
+#   game1.exe: {
+#       location: "path to game exe"
+#       saveFolder: "path to save folder"
+#   }
+#
+#   game2.exe: {
+#       location: "path to game exe"
+#       saveFolder: "path to save folder"
+#   }
+# }
 
 # TODO: use timestamp to determine if to upload
 class StatusBar(tk.Frame):
@@ -24,6 +61,13 @@ class StatusBar(tk.Frame):
     def clear(self):
         self.label.config(text="")
         self.label.update_idletasks()
+
+
+class gameList(tk.Toplevel):
+    def __init__(self, info):
+        tk.Toplevel.__init__(self)
+        self.title("Game List")
+        self.grab_set()
 
 
 class SSHWindow(tk.Toplevel):
@@ -83,8 +127,8 @@ class SSHWindow(tk.Toplevel):
         info["type"] = "SSH"
         info["auto"] = self.auto.get()
         save = dict(info)
-        config = open("config", "w")
-        config.write(json.dumps(save, sort_keys=False, indent=4, separators=(',', ': ')))
+        config = open("connection.json", "w")
+        json.dump(save, config, sort_keys=False, indent=4, separators=(',', ': '))
         config.close()
 
     def ok(self, info):
@@ -118,6 +162,8 @@ class Dropdown(ttk.Combobox):
 class App:
     def __init__(self):
         self.firstTime = True
+        self.client = None
+        self.saveConfig = None
         self.root = tk.Tk()
         self.root.title("Game Save Syncer")
         self.root.option_add('*tearOff', tk.FALSE)
@@ -125,9 +171,10 @@ class App:
         self.root.minsize(640, 360)
         self.root.resizable(1, 1)
 
+# Attempt to load previous config ##############################################
         self.clientInfo = dict()
         try:
-            config = open("config", "r")
+            config = open("connection.json", "r")
             self.clientInfo = json.load(config)
             if self.clientInfo["auto"]:
                 self.clientInfo["status"] = "Log In"
@@ -138,7 +185,7 @@ class App:
         except IOError:
             self.clientInfo.clear()
 
-        # create a menu
+# create menu ##################################################################
         menu = tk.Menu(self.root)
         self.root.config(menu=menu)
         self.root.rowconfigure(0, weight=1)
@@ -160,36 +207,51 @@ class App:
         mainFrame.grid(row=0, column=0, sticky="nesw")
         mainFrame.rowconfigure(2, weight=2)
         mainFrame.columnconfigure(0, weight=1)
+        # self.disableMainFrame()
 
+# create connection info #######################################################
         labelFrame = tk.LabelFrame(mainFrame, text="Connection Information")
         labelFrame.grid(row=0, column=0, sticky="nswe")
         labelFrame.columnconfigure(0, weight=1)
         self.connectionInfo = tk.Label(labelFrame, text="Not Connected")
         self.connectionInfo.grid(row=0, column=0, sticky="nswe")
 
-        # create dropdown menu
-        gameDropdownLabel= tk.LabelFrame(mainFrame, text="Game:")
-        gameDropdownLabel.grid(row=1, column=0, sticky="nsew")
-        gameDropdownLabel.columnconfigure(0, weight=1)
-        self.gameDropdown = Dropdown(gameDropdownLabel)
+# create dropdown menu #########################################################
+        gameDropdownFrame= tk.LabelFrame(mainFrame, text="Game:")
+        gameDropdownFrame.grid(row=1, column=0, sticky="nsew")
+        gameDropdownFrame.columnconfigure(0, weight=1)
+
+        self.gameDropdown = Dropdown(gameDropdownFrame)
         self.gameDropdown.grid(row=0, column=0, sticky="nsew")
+        tk.Button(gameDropdownFrame, text="...", command=partial(gameList, self.saveConfig)).grid(row=0, column=1, sticky="nsew")
 
-        # create treeview
-        self.saveList = ttk.Treeview(mainFrame)
-        self.saveList["columns"] = ("1", "2")
-        self.saveList.column("#0", width=270, minwidth=270)
-        self.saveList.column("1", width=150, minwidth=150)
-        self.saveList.column("2", width=80, minwidth=50)
-        self.saveList.heading("#0", text="Name", anchor="w")
-        self.saveList.heading("1", text="Date Modified", anchor="w")
-        self.saveList.heading("2", text="Size", anchor="w")
-        self.saveList.grid(row=2, column=0, columnspan=2, sticky="nwes")
+# create treeview ##############################################################
+        treeFrame = tk.LabelFrame(mainFrame, text="Saves")
+        treeFrame.grid(row=2, column=0, sticky="nsew")
+        treeFrame.columnconfigure(0, weight=1)
+        treeFrame.rowconfigure(1, weight=1)
 
+        buttonFrame = tk.Frame(treeFrame)
+        buttonFrame.grid(row=0, column=0)
+        tk.Button(buttonFrame, text="Add", command=self.callback).grid(row=0, column=0)
+        tk.Button(buttonFrame, text="Remove", command=self.callback).grid(row=0, column=1)
+        tk.Button(buttonFrame, text="Edit", command=self.callback).grid(row=0, column=2)
+
+        self.saveListView = ttk.Treeview(treeFrame)
+        self.saveListView["columns"] = ("1", "2")
+        self.saveListView.column("#0", width=270, minwidth=270)
+        self.saveListView.column("1", width=150, minwidth=150)
+        self.saveListView.column("2", width=80, minwidth=50)
+        self.saveListView.heading("#0", text="Name", anchor="w")
+        self.saveListView.heading("1", text="Date Modified", anchor="w")
+        self.saveListView.heading("2", text="Size", anchor="w")
+        self.saveListView.grid(row=1, column=0, rowspan=2, sticky="nwes")
+
+# create statusbar #############################################################
         self.status = StatusBar(self.root)
         self.status.grid(row=1, column=0, sticky="we")
 
-        self.client = None
-        self.fileList = dict()
+################################################################################
 
         self.root.after(0, self.update)
         self.root.mainloop()
@@ -226,6 +288,14 @@ class App:
 
     def callback(self):
         print("called the callback!")
+
+    # def enableMainFrame(self):
+    #     for child in self.mainFrame.winfo_children():
+    #         child.configure(state=tk.NORMAL)
+    #
+    # def disableMainFrame(self):
+    #     for child in self.mainFrame.winfo_children():
+    #         child["state"] = tk.DISABLED
 
     def openSSH(self, info):
         try:
@@ -281,29 +351,31 @@ class App:
         sftp = self.client.open_sftp()
         sftp.chdir("./.gamesaver/")
         # print(sftp.getcwd())
-        stdin, stdout, stderr = self.client.exec_command("test  -f \"./.gamesaver/save.conf\" && echo \"yes\"")
+        stdin, stdout, stderr = self.client.exec_command("test  -f \"./.gamesaver/saves.json\" && echo \"yes\"")
         out = stdout.read().decode("UTF-8")
         out = out.strip()
         if out == "":
-            self.client.exec_command("touch \"./.gamesaver/save.conf\"")
-            stdin, stdout, stderr = self.client.exec_command("test  -f \"./.gamesaver/save.conf\" && echo \"yes\"")
+            self.client.exec_command("touch \"./.gamesaver/saves.json\"")
+            stdin, stdout, stderr = self.client.exec_command("test  -f \"./.gamesaver/saves.json\" && echo \"yes\"")
             out = stdout.read().decode("UTF-8")
             out = out.strip()
             if out == "":
                 print("Could not create config.")  # Need to display error in status bar about not being able to create file and return
 
             try:
-                file = sftp.open("save.conf", "w")
-                file.write(json.dumps({}, sort_keys=False, indent=4, separators=(',', ': ')))
+                file = sftp.open("saves.json", "w")
+                json.dump({}, file, sort_keys=False, indent=4, separators=(',', ': '))
                 file.close()
             except IOError:
                 print("Could not open config")
 
-        file = sftp.open("save.conf", "r")
-        self.fileList = json.load(file)
+        file = sftp.open("saves.json", "r")
+        self.saveConfig = json.load(file)
         file.close()
 
         self.client.close()
+        self.client = None
+        self.saveConfig = None
         self.clientInfo["status"] = "Disconnected"
         self.status.set(self.clientInfo["status"])
 
