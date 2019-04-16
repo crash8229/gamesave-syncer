@@ -70,22 +70,29 @@ class SSHWindow(tk.Toplevel):
         # Making the Ok and Cancel buttons
         tk.Button(self, text="Ok", command=partial(self.ok, info)).grid(row=4, column=2)
         tk.Button(self, text="Cancel", command=self.destroy).grid(row=4, column=3)
+        tk.Button(self, text="Apply", command=partial(self.apply, info)).grid(row=4, column=4)
 
-    def ok(self, info):
+    def updateInfo(self, info):
         info.clear()
         info["hostname"] = self.host.get()
         info["port"] = int(self.port.get())
         info["username"] = self.user.get()
         info["key_filename"] = self.key.get()
-        info["status"] = "Log In"
         info["type"] = "SSH"
         info["auto"] = self.auto.get()
         save = dict(info)
-        save.pop("status")
         config = open("config", "w")
         config.write(json.dumps(save, sort_keys=False, indent=4, separators=(',', ': ')))
         config.close()
+
+    def ok(self, info):
+        self.updateInfo(info)
+        info["status"] = "Log In"
         self.destroy()
+
+    def apply(self, info):
+        self.updateInfo(info)
+        info["status"] = "Idle"
 
     def getFile(self):
         print("Get File")
@@ -116,7 +123,10 @@ class App:
         try:
             config = open("config", "r")
             self.clientInfo = json.load(config)
-            self.clientInfo["status"] = "Idle"
+            if self.clientInfo["auto"] == True:
+                self.clientInfo["status"] = "Log In"
+            else:
+                self.clientInfo["status"] = "Idle"
             config.close()
         except IOError:
             self.clientInfo.clear()
