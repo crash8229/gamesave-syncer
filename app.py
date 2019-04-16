@@ -29,6 +29,7 @@ class StatusBar(tk.Frame):
 class SSHWindow(tk.Toplevel):
     def __init__(self, info):
         tk.Toplevel.__init__(self)
+        self.resizable(0, 0)
         self.title("SSH Login")
         self.grab_set()
 
@@ -100,6 +101,7 @@ class SSHWindow(tk.Toplevel):
         if filedialog != "":
             self.key.delete(0, tk.END)
             self.key.insert(0, filename)
+
 
 class Dropdown(ttk.Combobox):
     def __init__(self, master):
@@ -187,8 +189,9 @@ class App:
         self.status.grid(row=1, column=0, sticky="we")
 
         self.client = None
+        self.fileList = dict()
 
-        self.root.after(1000, self.update)
+        self.root.after(0, self.update)
         self.root.mainloop()
 
     def update(self):
@@ -212,6 +215,8 @@ class App:
                 self.status.set(self.clientInfo["status"])
                 self.firstTime = False
                 self.clientInfo["status"] = "Log In"
+                self.root.after(1500, self.update)
+                return
 
         dt = int(1000 - (time() - startTime) * 1000)
         if dt < 0:
@@ -251,9 +256,52 @@ class App:
             return
         self.clientInfo["status"] = "Connected"
         self.status.set(self.clientInfo["status"])
-        stdin, stdout, stderr = self.client.exec_command('ls -l')
+        self.getSaveConfig()
+        # stdin, stdout, stderr = self.client.exec_command('ls -l')
+        # out = stdout.read().decode("UTF-8")
+        # print(out)
+        #
+        # self.client.close()
+        # self.clientInfo["status"] = "Disconnected"
+        # self.status.set(self.clientInfo["status"])
+
+    def getSaveConfig(self):
+        stdin, stdout, stderr = self.client.exec_command("test  -d \"./.gamesaver\" && echo \"yes\"")
         out = stdout.read().decode("UTF-8")
-        print(out)
+        out = out.strip()
+        if out == "":
+            self.client.exec_command("mkdir \"./.gamesaver\"")
+            stdin, stdout, stderr = self.client.exec_command("test  -d \"./.gamesaver\" && echo \"yes\"")
+            out = stdout.read().decode("UTF-8")
+            out = out.strip()
+            if out == "":
+                print("Could not create directory")  # Need to display error in status bar about not being able to create directory and return
+
+        # sftp = paramiko.SFTP()
+        sftp = self.client.open_sftp()
+        sftp.chdir("./.gamesaver/")
+        # print(sftp.getcwd())
+        stdin, stdout, stderr = self.client.exec_command("test  -f \"./.gamesaver/save.conf\" && echo \"yes\"")
+        out = stdout.read().decode("UTF-8")
+        out = out.strip()
+        if out == "":
+            self.client.exec_command("touch \"./.gamesaver/save.conf\"")
+            stdin, stdout, stderr = self.client.exec_command("test  -f \"./.gamesaver/save.conf\" && echo \"yes\"")
+            out = stdout.read().decode("UTF-8")
+            out = out.strip()
+            if out == "":
+                print("Could not create config.")  # Need to display error in status bar about not being able to create file and return
+
+            try:
+                file = sftp.open("save.conf", "w")
+                file.write(json.dumps({}, sort_keys=False, indent=4, separators=(',', ': ')))
+                file.close()
+            except IOError:
+                print("Could not open config")
+
+        file = sftp.open("save.conf", "r")
+        self.fileList = json.load(file)
+        file.close()
 
         self.client.close()
         self.clientInfo["status"] = "Disconnected"
