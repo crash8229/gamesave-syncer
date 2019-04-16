@@ -1,6 +1,7 @@
 import paramiko
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 from functools import partial
 from threading import Thread
 from time import time
@@ -95,8 +96,10 @@ class SSHWindow(tk.Toplevel):
         info["status"] = "Idle"
 
     def getFile(self):
-        print("Get File")
-
+        filename = filedialog.askopenfilename(initialdir="", title="Select private key")
+        if filedialog != "":
+            self.key.delete(0, tk.END)
+            self.key.insert(0, filename)
 
 class Dropdown(ttk.Combobox):
     def __init__(self, master):
@@ -112,6 +115,7 @@ class Dropdown(ttk.Combobox):
 
 class App:
     def __init__(self):
+        self.firstTime = True
         self.root = tk.Tk()
         self.root.title("Game Save Syncer")
         self.root.option_add('*tearOff', tk.FALSE)
@@ -123,8 +127,9 @@ class App:
         try:
             config = open("config", "r")
             self.clientInfo = json.load(config)
-            if self.clientInfo["auto"] == True:
+            if self.clientInfo["auto"]:
                 self.clientInfo["status"] = "Log In"
+                self.firstTime = False
             else:
                 self.clientInfo["status"] = "Idle"
             config.close()
@@ -151,10 +156,7 @@ class App:
 
         mainFrame = tk.Frame(self.root)
         mainFrame.grid(row=0, column=0, sticky="nesw")
-        mainFrame.rowconfigure(0, weight=0)
-        mainFrame.rowconfigure(1, weight=0)
         mainFrame.rowconfigure(2, weight=2)
-        # mainFrame.rowconfigure(3, weight=1)
         mainFrame.columnconfigure(0, weight=1)
 
         labelFrame = tk.LabelFrame(mainFrame, text="Connection Information")
@@ -181,9 +183,6 @@ class App:
         self.saveList.heading("2", text="Size", anchor="w")
         self.saveList.grid(row=2, column=0, columnspan=2, sticky="nwes")
 
-        # self.text = tk.Text(mainFrame)
-        # self.text.grid(row=3, column=0, columnspan=2, sticky="we")
-
         self.status = StatusBar(self.root)
         self.status.grid(row=1, column=0, sticky="we")
 
@@ -194,70 +193,67 @@ class App:
 
     def update(self):
         startTime = time()
-        print(self.clientInfo)
+        # print(self.clientInfo)
         if "status" in self.clientInfo and self.clientInfo["status"] == "Log In":
             client_info = dict(self.clientInfo)
             client_info.pop("status")
             client_info.pop("type")
             client_info.pop("auto")
             client_info["timeout"] = 1
+            client_info["look_for_keys"] = False
+            client_info["allow_agent"] = False
             self.clientInfo["status"] = "Logging In"
             self.status.set(self.clientInfo["status"])
             self.connectionSSH(client_info)
+
+            # Do not add a print statement in this block it will cause the second attempt to fail
+            if self.firstTime:
+                self.clientInfo["status"] = "Logging In"
+                self.status.set(self.clientInfo["status"])
+                self.firstTime = False
+                self.clientInfo["status"] = "Log In"
 
         dt = int(1000 - (time() - startTime) * 1000)
         if dt < 0:
             self.root.after(0, self.update)
         else:
             self.root.after(dt, self.update)
-        pass
 
     def callback(self):
         print("called the callback!")
 
+    def openSSH(self, info):
+        try:
+            self.client.connect(**info)
+            return True
+        except paramiko.BadHostKeyException:
+            self.clientInfo["status"] = "Error: Bad Host Key"
+            self.status.set(self.clientInfo["status"])
+            self.client.close()
+        except paramiko.AuthenticationException:
+            self.clientInfo["status"] = "Error: Authentication Error"
+            self.status.set(self.clientInfo["status"])
+            self.client.close()
+        except (paramiko.SSHException, paramiko.ssh_exception.SSHException, socketError) as e:
+            self.clientInfo["status"] = "Error: Connection Error"
+            self.status.set(self.clientInfo["status"])
+            self.client.close()
+        return False
+
     def connectionSSH(self, info):
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        tries = 2
-        while tries > 0:
-            try:
-                self.client.connect(**info)
-                tries = 0
-            except paramiko.BadHostKeyException:
-                self.clientInfo["status"] = "Error: Bad Host Key"
-                self.status.set(self.clientInfo["status"])
-                self.client.close()
-                return
-            except paramiko.AuthenticationException:
-                self.clientInfo["status"] = "Error: Authentication Error"
-                self.status.set(self.clientInfo["status"])
-                self.client.close()
-                return
-            except (paramiko.SSHException, paramiko.ssh_exception.SSHException, socketError):
-                if tries > 0:
-                    tries -= 1
-                    self.client.close()
-                    self.client = paramiko.SSHClient()
-                    self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                    continue
-                self.clientInfo["status"] = "Error: Connection Error"
-                self.status.set(self.clientInfo["status"])
-                self.client.close()
-                return
-        try:
-            self.client.exec_command("ls")
-        except AttributeError:
-            self.clientInfo["status"] = "Error: Connection Error (maybe due to bad private key)"
-            self.status.set(self.clientInfo["status"])
-            self.client.close()
+        tries = 0
+        while not self.openSSH(info) and tries < 3 and not self.firstTime:
+            tries += 1
+            self.status.set("Retrying ... {0}".format(tries))
+        if tries == 3 or self.firstTime:
             return
         self.clientInfo["status"] = "Connected"
         self.status.set(self.clientInfo["status"])
         stdin, stdout, stderr = self.client.exec_command('ls -l')
         out = stdout.read().decode("UTF-8")
         print(out)
-        # self.text.delete(1.0, tk.END)
-        # self.text.insert(1.0, out)
 
         self.client.close()
         self.clientInfo["status"] = "Disconnected"
