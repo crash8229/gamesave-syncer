@@ -11,17 +11,13 @@ from socket import error as socketError
 
 # Current save.json structure proposal:
 # {
-#   friendlyName1: {
-#       gameExe: "name.exe"
-#       saveFolder: "path to save folder"
+#   game1.exe: {
 #       save: {
 #           nameOfSave1: unixTimestamp
 #           nameOfSave2: unixTimestamp
 #       }
 #   }
-#   friendlyName2: {
-#       gameExe: "name.exe"
-#       saveFolder: "path to save folder"
+#   game2.exe: {
 #       save: {
 #           nameOfSave1: unixTimestamp
 #           nameOfSave2: unixTimestamp
@@ -37,11 +33,13 @@ from socket import error as socketError
 # game.exe needs to be located. Same with save location.
 # {
 #   game1.exe: {
+#       friendlyName: "name"
 #       location: "path to game exe"
 #       saveFolder: "path to save folder"
 #   }
 #
 #   game2.exe: {
+#       friendlyName: "name"
 #       location: "path to game exe"
 #       saveFolder: "path to save folder"
 #   }
@@ -68,6 +66,28 @@ class gameList(tk.Toplevel):
         tk.Toplevel.__init__(self)
         self.title("Game List")
         self.grab_set()
+
+        buttonFrame = tk.Frame(self)
+        buttonFrame.grid(row=0, column=0)
+        tk.Button(buttonFrame, text="Add", command=self.callback).grid(row=0, column=0)
+        tk.Button(buttonFrame, text="Remove", command=self.callback).grid(row=0, column=1)
+        tk.Button(buttonFrame, text="Edit", command=self.callback).grid(row=0, column=2)
+
+        self.saveListView = ttk.Treeview(self)
+        self.saveListView["columns"] = ("1", "2")
+        self.saveListView.column("#0", width=270, minwidth=270)
+        self.saveListView.column("1", width=150, minwidth=150)
+        self.saveListView.column("2", width=80, minwidth=50)
+        self.saveListView.heading("#0", text="Name", anchor="w")
+        self.saveListView.heading("1", text="Date Modified", anchor="w")
+        self.saveListView.heading("2", text="Size", anchor="w")
+        self.saveListView.grid(row=1, column=0, rowspan=2, sticky="nwes")
+
+    def updateList(self, info):
+        pass
+
+    def callback(self):
+        print("callback test")
 
 
 class SSHWindow(tk.Toplevel):
