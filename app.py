@@ -12,20 +12,18 @@ from socket import error as socketError
 # Current save.json structure proposal:
 # {
 #   game1.exe: {
-#       save: {
 #           nameOfSave1: unixTimestamp
 #           nameOfSave2: unixTimestamp
 #       }
 #   }
 #   game2.exe: {
-#       save: {
 #           nameOfSave1: unixTimestamp
 #           nameOfSave2: unixTimestamp
 #       }
 #   }
 # }
 #
-# Current games.json structure proposal:
+# Current game.json structure proposal:
 # I chose this structure since the location of the game exe will vary system
 # to system. This will be stored on the client side. From save.conf, it will
 # check to see if the game.exe has an entry to when it is on the system. If not,
@@ -44,6 +42,7 @@ from socket import error as socketError
 #       saveFolder: "path to save folder"
 #   }
 # }
+
 
 # TODO: use timestamp to determine if to upload
 class StatusBar(tk.Frame):
@@ -170,20 +169,27 @@ class SSHWindow(tk.Toplevel):
 class Dropdown(ttk.Combobox):
     def __init__(self, master):
         self.master = master
+        # self.options = ["test", "test1"]
         self.options = [""]
         ttk.Combobox.__init__(self, master, values=self.options)
         self.update_option_menu()
+        self.bind("<<ComboboxSelected>>", self.callback)
 
     def update_option_menu(self):
         self["values"] = self.options
         self.current(0)
+
+    def callback(self, event):
+        print("Option selected: " + event.widget.get())
+
 
 
 class App:
     def __init__(self):
         self.firstTime = True
         self.client = None
-        self.saveConfig = None
+        self.saveConfig = dict()
+        self.gameConfig = dict()
         self.root = tk.Tk()
         self.root.title("Game Save Syncer")
         self.root.option_add('*tearOff', tk.FALSE)
@@ -365,7 +371,7 @@ class App:
             out = stdout.read().decode("UTF-8")
             out = out.strip()
             if out == "":
-                print("Could not create directory")  # Need to display error in status bar about not being able to create directory and return
+                print("Could not create directory")  # TODO: Need to display error in status bar about not being able to create directory and return
 
         # sftp = paramiko.SFTP()
         sftp = self.client.open_sftp()
@@ -380,24 +386,41 @@ class App:
             out = stdout.read().decode("UTF-8")
             out = out.strip()
             if out == "":
-                print("Could not create config.")  # Need to display error in status bar about not being able to create file and return
+                print("Could not create config.")  # TODO: Need to display error in status bar about not being able to create file and return
 
             try:
                 file = sftp.open("saves.json", "w")
                 json.dump({}, file, sort_keys=False, indent=4, separators=(',', ': '))
                 file.close()
             except IOError:
-                print("Could not open config")
+                print("Could not open config")  # TODO: Need to display error in status bar about not being able to open file and return
 
-        file = sftp.open("saves.json", "r")
-        self.saveConfig = json.load(file)
-        file.close()
+        try:
+            file = sftp.open("saves.json", "r")
+            self.saveConfig = json.load(file)
+            file.close()
+        except IOError:
+            print("Could not open config")  # TODO: Need to display error in status bar about not being able to open file and return
 
         self.client.close()
         self.client = None
-        self.saveConfig = None
+        self.saveConfig.clear()
         self.clientInfo["status"] = "Disconnected"
         self.status.set(self.clientInfo["status"])
+
+    def getGameConfig(self):
+        try:
+            config = open("game.json", "r")
+            self.gameConfig = json.load(config)
+            config.close()
+        except IOError:
+            print("Could not open config")  # TODO: Need to display error in status bar about not being able to open file and return
+        except FileNotFoundError:
+            config = open("game.json", "w")
+            json.dump({}, config, sort_keys=False, indent=4, separators=(',', ': '))
+            config.close()
+            self.gameConfig.clear()
+
 
     def close(self):
         self.root.destroy()
